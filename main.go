@@ -81,3 +81,31 @@ func validateImageFile(path string) error {
 	return nil
 
 }
+func preprocess(path string) (string, error) {
+    // AutoOrientation fixes phone photos that are rotated via EXIF
+    img, err := imaging.Open(path, imaging.AutoOrientation(true))
+    if err != nil {
+        return "", fmt.Errorf("decode image: %w", err)
+    }
+
+    // Tesseract works best when text is reasonably large
+    if img.Bounds().Dx() < 1800 {
+        img = imaging.Resize(img, 1800, 0, imaging.Lanczos)
+    }
+
+    img = imaging.Grayscale(img)
+    img = imaging.AdjustContrast(img, 30)
+    img = imaging.Sharpen(img, 1.0)
+
+    tmp, err := os.CreateTemp("", "ocr-*.png")
+    if err != nil {
+        return "", err
+    }
+    tmp.Close()
+
+    if err := imaging.Save(img, tmp.Name()); err != nil {
+        os.Remove(tmp.Name())
+        return "", fmt.Errorf("save processed image: %w", err)
+    }
+    return tmp.Name(), nil
+}
