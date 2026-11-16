@@ -1,8 +1,8 @@
 package main 
 
 import (
-	"log"
-	//"github.com/disintegration/imaging"
+	//"log"
+	"github.com/disintegration/imaging"
 	//"github.com/spf13/cobra"
 	"errors"
 	"flag"
@@ -10,24 +10,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	
 )
-func main () {
-	log.Println("application kenshi")
-
-imagePath := flag.String("image", "", "Path to the input image (.jpg, .png)")
-	flag.Parse()
-
-	if err := validateImageFile(*imagePath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	fmt.Printf("Valid image ready for processing: %s\n", *imagePath)
-	// Proceed with your image processing logic here...
+func main() {
+    if err := run(); err != nil {
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(1)
+    }
 }
+
 
 func validateImageFile(path string) error {
 	// Check that the flag was actually provided
@@ -108,4 +102,40 @@ func preprocess(path string) (string, error) {
         return "", fmt.Errorf("save processed image: %w", err)
     }
     return tmp.Name(), nil
+}
+func runOCR(imgPath string) (string, error) {
+    if _, err := exec.LookPath("tesseract"); err != nil {
+        return "", errors.New("tesseract not found in PATH")
+    }
+    out, err := exec.Command("tesseract", imgPath, "stdout",
+        "--psm", "6",
+        "-c", "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ",
+    ).Output()
+    if err != nil {
+        return "", fmt.Errorf("tesseract failed: %w", err)
+    }
+    return string(out), nil
+}
+func run() error {
+    imagePath := flag.String("image", "", "Path to the input image (.jpg, .jpeg, .png)")
+    flag.Parse()
+
+    if err := validateImageFile(*imagePath); err != nil {
+        flag.Usage()
+        return err
+    }
+
+    processed, err := preprocess(*imagePath)
+    if err != nil {
+        return err
+    }
+    defer os.Remove(processed)
+
+    text, err := runOCR(processed)
+    if err != nil {
+        return err
+    }
+
+    fmt.Println(text) // temporary: inspect raw output before adding IBAN extraction
+    return nil
 }
